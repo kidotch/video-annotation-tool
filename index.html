@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>iOS Video Debug</title>
+<title>Video Player</title>
 <style>
 /* ページ拡大・スクロールバウンス・プルリフレッシュ防止 */
 html, body {
@@ -36,10 +36,9 @@ html, body {
 body { font-family: system-ui; }
 
 /* コンテンツは選択可能に */
-#log, #timeDisplay { -webkit-user-select: text; user-select: text; }
+#timeDisplay { -webkit-user-select: text; user-select: text; }
 video { width: 100%; max-height: 50vh; background: #333; }
 button { font-size: 18px; padding: 12px 16px; margin: 4px; }
-#log { background: #f0f0f0; padding: 10px; font-family: monospace; font-size: 12px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
 
 /* シークバー */
 #seekContainer { margin: 16px 0; }
@@ -63,10 +62,6 @@ button, input { touch-action: manipulation; }
 </head>
 <body>
 <div id="container">
-
-<h3>iOS Video Debug</h3>
-
-<div id="log">Loading...</div>
 
 <p><input type="file" id="file" accept="video/*"></p>
 
@@ -126,73 +121,25 @@ container.addEventListener("touchmove", function(e) {
   lastY = y;
 }, { passive: false });
 
-// ログ関数
-var logEl = document.getElementById("log");
-function log(msg) {
-  var now = new Date().toLocaleTimeString();
-  logEl.textContent = now + " " + msg + "\n" + logEl.textContent;
-}
-
-// 起動確認
-log("Script loaded. UA: " + navigator.userAgent.slice(0, 50));
-
 var v = document.getElementById("video");
 var fileInput = document.getElementById("file");
 
 // ファイル選択
 fileInput.onchange = function(e) {
-  log("File input changed");
-
   var files = e.target.files;
-  log("Files count: " + (files ? files.length : "null"));
-
-  if (!files || files.length === 0) {
-    log("No file selected");
-    return;
-  }
-
-  var f = files[0];
-  log("File: " + f.name);
-  log("Size: " + f.size + " bytes");
-  log("Type: " + f.type);
-
-  // Blob URL方式
-  try {
-    var url = URL.createObjectURL(f);
-    log("Blob URL created: " + url.slice(0, 30) + "...");
-    v.src = url;
-    log("src set");
-  } catch(err) {
-    log("ERROR: " + err.message);
-  }
+  if (!files || files.length === 0) return;
+  var url = URL.createObjectURL(files[0]);
+  v.src = url;
 };
-
-// Video events
-v.onloadstart = function() { log("EVENT: loadstart"); };
-v.onloadedmetadata = function() { log("EVENT: loadedmetadata, duration=" + v.duration); };
-v.onloadeddata = function() { log("EVENT: loadeddata"); };
-v.oncanplay = function() { log("EVENT: canplay"); };
-v.onerror = function() {
-  var e = v.error;
-  log("EVENT: error - " + (e ? "code=" + e.code + " " + e.message : "unknown"));
-};
-v.onplaying = function() { log("EVENT: playing"); };
-v.onstalled = function() { log("EVENT: stalled"); };
-v.onsuspend = function() { log("EVENT: suspend"); };
 
 // ボタン
 document.getElementById("btnPlay").onclick = function() {
-  log("Play button clicked");
   v.play().then(function() {
-    log("Play succeeded");
     v.muted = false;
-  }).catch(function(e) {
-    log("Play failed: " + e.message);
-  });
+  }).catch(function(e) {});
 };
 
 document.getElementById("btnPause").onclick = function() {
-  log("Pause clicked");
   v.pause();
 };
 
@@ -235,7 +182,6 @@ v.ontimeupdate = function() {
 
 v.ondurationchange = function() {
   updateTimeDisplay();
-  log("Duration: " + v.duration);
 };
 
 // シークバー操作
@@ -278,13 +224,11 @@ document.getElementById("fineModeBtn").onclick = function() {
     btn.textContent = "🎯 精密モード ON";
     info.classList.add("active");
     info.textContent = "精密モード ON: シークバーの動きが10倍細かくなります";
-    log("Fine mode ON");
   } else {
     btn.classList.remove("active");
     btn.textContent = "🎯 精密モード";
     info.classList.remove("active");
     info.textContent = "精密モード: シークバーの動きが10倍細かくなります";
-    log("Fine mode OFF");
   }
 };
 
@@ -292,7 +236,6 @@ document.getElementById("fineModeBtn").onclick = function() {
 function seekBy(sec) {
   v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + sec));
   updateTimeDisplay();
-  log("Seek to: " + formatTime(v.currentTime));
 }
 
 document.getElementById("seekBack10").onclick = function() { seekBy(-10); };
@@ -310,7 +253,6 @@ document.getElementById("timestampBtn").onclick = function() {
 
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(timestamp).then(function() {
-      log("Copied: " + timestamp);
       btn.classList.add("copied");
       feedback.textContent = "コピーしました: " + timestamp;
       setTimeout(function() {
@@ -318,7 +260,6 @@ document.getElementById("timestampBtn").onclick = function() {
         feedback.textContent = "";
       }, 2000);
     }).catch(function(err) {
-      log("Copy failed: " + err.message);
       fallbackCopy(timestamp);
     });
   } else {
@@ -335,10 +276,8 @@ function fallbackCopy(text) {
   ta.select();
   try {
     document.execCommand("copy");
-    log("Copied (fallback): " + text);
     document.getElementById("copyFeedback").textContent = "コピーしました: " + text;
   } catch(e) {
-    log("Copy failed: " + e.message);
     document.getElementById("copyFeedback").textContent = "コピー失敗";
   }
   document.body.removeChild(ta);
@@ -346,8 +285,6 @@ function fallbackCopy(text) {
     document.getElementById("copyFeedback").textContent = "";
   }, 2000);
 }
-
-log("Setup complete");
 </script>
 
 </div>
