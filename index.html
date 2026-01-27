@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Video Player</title>
+<title>Video Annotation Tool</title>
 <style>
 /* ページ拡大・スクロールバウンス・プルリフレッシュ防止 */
 html, body {
@@ -36,14 +36,17 @@ html, body {
 body { font-family: system-ui; }
 
 /* コンテンツは選択可能に */
-#timeDisplay { -webkit-user-select: text; user-select: text; }
-video { width: 100%; max-height: 50vh; background: #333; }
-button { font-size: 18px; padding: 12px 16px; margin: 4px; }
+#timeDisplay, input, textarea, td { -webkit-user-select: text; user-select: text; }
+video { width: 100%; max-height: 40vh; background: #333; }
+button { font-size: 16px; padding: 10px 14px; margin: 4px; }
 
 /* シークバー */
-#seekContainer { margin: 16px 0; }
+#seekContainer { margin: 12px 0; }
 #seekBar { width: 100%; height: 8px; cursor: pointer; }
 #timeDisplay { font-family: monospace; font-size: 16px; margin: 8px 0; }
+#playbackControls { margin: 8px 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+#playbackControls button { font-size: 14px; padding: 8px 12px; }
+#speedDisplay { font-family: monospace; font-size: 14px; min-width: 40px; text-align: center; }
 #fineSeek { margin: 8px 0; }
 #fineSeek button { font-size: 14px; padding: 8px 12px; }
 #timestampBtn { background: #4CAF50; color: white; border: none; border-radius: 4px; }
@@ -58,44 +61,190 @@ button { font-size: 18px; padding: 12px 16px; margin: 4px; }
 
 /* ボタンのダブルタップズーム防止 */
 button, input { touch-action: manipulation; }
+
+/* セクション */
+.section { margin: 16px 0; padding: 12px; background: #f5f5f5; border-radius: 8px; }
+.section h4 { margin: 0 0 12px 0; }
+
+/* アノテーション一覧テーブル */
+#annotationTable { width: 100%; border-collapse: collapse; font-size: 14px; }
+#annotationTable th, #annotationTable td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+#annotationTable th { background: #e0e0e0; }
+#annotationTable tr:hover { background: #f0f0f0; }
+#annotationTable .query-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tableContainer { max-height: 300px; overflow-y: auto; }
+
+/* 編集フォーム */
+#editForm { display: grid; gap: 8px; }
+#editForm label { font-weight: bold; font-size: 14px; }
+#editForm input, #editForm textarea, #editForm select { font-size: 16px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 100%; box-sizing: border-box; }
+#editForm textarea { resize: vertical; min-height: 60px; }
+
+/* オートサジェスト */
+.query-input-container { position: relative; }
+#suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ccc;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+  display: none;
+}
+#suggestions.show { display: block; }
+.suggestion-item {
+  padding: 10px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  font-size: 14px;
+}
+.suggestion-item:hover, .suggestion-item.selected {
+  background: #e3f2fd;
+}
+.suggestion-item:last-child { border-bottom: none; }
+.form-row { display: flex; align-items: center; gap: 8px; }
+.form-row input { flex: 1; }
+.form-row button { flex-shrink: 0; }
+
+/* ボタンスタイル */
+.btn-primary { background: #2196F3; color: white; border: none; border-radius: 4px; }
+.btn-primary:active { background: #1976D2; }
+.btn-danger { background: #f44336; color: white; border: none; border-radius: 4px; }
+.btn-danger:active { background: #d32f2f; }
+.btn-secondary { background: #9E9E9E; color: white; border: none; border-radius: 4px; }
+.btn-small { font-size: 12px; padding: 6px 10px; }
+
+/* 編集中ハイライト */
+#annotationTable tr.editing { background: #fff3e0 !important; }
+
+/* ステータス表示 */
+#status { font-size: 14px; color: #666; margin: 8px 0; }
+#status.error { color: #f44336; }
+#status.success { color: #4CAF50; }
 </style>
 </head>
 <body>
 <div id="container">
 
-<h3>Video Player</h3>
+<h3>Video Annotation Tool</h3>
 
-<p><input type="file" id="file" accept="video/*"></p>
+<!-- 動画セクション -->
+<div class="section">
+  <h4>動画</h4>
+  <p><input type="file" id="file" accept="video/*"></p>
+  <video id="video" controls playsinline muted webkit-playsinline></video>
 
-<video id="video" controls playsinline muted webkit-playsinline></video>
-
-<!-- シークバー・タイムスタンプ -->
-<div id="seekContainer">
-  <input type="range" id="seekBar" min="0" max="100" step="0.01" value="0">
-  <div id="timeDisplay">00:00.000 / 00:00.000</div>
-  <div id="fineSeek">
-    <button id="seekBack10">-10s</button>
-    <button id="seekBack1">-1s</button>
-    <button id="seekBackFrame">-0.1s</button>
-    <button id="seekFwdFrame">+0.1s</button>
-    <button id="seekFwd1">+1s</button>
-    <button id="seekFwd10">+10s</button>
+  <div id="seekContainer">
+    <input type="range" id="seekBar" min="0" max="100" step="0.01" value="0">
+    <div id="timeDisplay">00:00.000 / 00:00.000</div>
+    <div id="playbackControls">
+      <button id="btnRewind" class="btn-secondary">⏪</button>
+      <button id="btnPlay" class="btn-primary">▶</button>
+      <button id="btnPause" class="btn-secondary">⏸</button>
+      <button id="btnFastFwd" class="btn-secondary">⏩</button>
+      <span id="speedDisplay">1.0x</span>
+    </div>
+    <div id="fineSeek">
+      <button id="seekBack10">-10s</button>
+      <button id="seekBack1">-1s</button>
+      <button id="seekBackFrame">-0.1s</button>
+      <button id="seekFwdFrame">+0.1s</button>
+      <button id="seekFwd1">+1s</button>
+      <button id="seekFwd10">+10s</button>
+    </div>
+    <p>
+      <button id="fineModeBtn">精密モード</button>
+      <button id="timestampBtn">タイムスタンプをコピー</button>
+      <span id="copyFeedback"></span>
+    </p>
+    <div id="fineModeInfo">精密モード: シークバーの動きが10倍細かくなります</div>
   </div>
-  <p>
-    <button id="fineModeBtn">🎯 精密モード</button>
-    <button id="timestampBtn">📋 タイムスタンプをコピー</button>
-    <span id="copyFeedback"></span>
-  </p>
-  <div id="fineModeInfo">精密モード: シークバーの動きが10倍細かくなります</div>
 </div>
 
-<p>
-<button id="btnPlay">▶ Play</button>
-<button id="btnPause">⏸ Pause</button>
-</p>
+<!-- CSVファイル操作 -->
+<div class="section">
+  <h4>CSVファイル</h4>
+  <p>
+    <button id="loadCsvBtn" class="btn-primary">CSVを読み込み</button>
+    <button id="downloadCsvBtn" class="btn-primary">CSVをダウンロード</button>
+  </p>
+  <div id="status"></div>
+</div>
+
+<!-- アノテーション編集フォーム -->
+<div class="section">
+  <h4 id="formTitle">新規アノテーション</h4>
+  <div id="editForm">
+    <input type="hidden" id="editId" value="">
+    <div>
+      <label>video_id</label>
+      <input type="text" id="editVideoId" readonly style="background: #e0e0e0;">
+    </div>
+    <div>
+      <label>start</label>
+      <div class="form-row">
+        <input type="number" id="editStart" step="0.1" placeholder="0.0">
+        <button type="button" id="setStartBtn" class="btn-secondary btn-small">現在時刻</button>
+      </div>
+    </div>
+    <div>
+      <label>end</label>
+      <div class="form-row">
+        <input type="number" id="editEnd" step="0.1" placeholder="0.0">
+        <button type="button" id="setEndBtn" class="btn-secondary btn-small">現在時刻</button>
+      </div>
+    </div>
+    <div class="query-input-container">
+      <label>query</label>
+      <textarea id="editQuery" placeholder="The nurse performs..."></textarea>
+      <div id="suggestions"></div>
+    </div>
+    <div>
+      <button id="saveBtn" class="btn-primary">追加</button>
+      <button id="clearFormBtn" class="btn-secondary">クリア</button>
+    </div>
+  </div>
+</div>
+
+<!-- アノテーション一覧 -->
+<div class="section">
+  <h4>アノテーション一覧 (<span id="annotationCount">0</span>件)</h4>
+  <div id="tableContainer">
+    <table id="annotationTable">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>video_id</th>
+          <th>start</th>
+          <th>end</th>
+          <th>query</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="annotationBody">
+      </tbody>
+    </table>
+  </div>
+</div>
 
 <script>
-// ピンチズーム防止
+// ===== グローバル変数 =====
+var annotations = [];
+var editingId = null;
+var currentVideoId = "";
+
+// ===== DOM要素 =====
+var v = document.getElementById("video");
+var fileInput = document.getElementById("file");
+var seekBar = document.getElementById("seekBar");
+var timeDisplay = document.getElementById("timeDisplay");
+
+// ===== ピンチズーム防止 =====
 document.addEventListener("touchstart", function(e) {
   if (e.touches.length > 1) e.preventDefault();
 }, { passive: false });
@@ -104,7 +253,7 @@ document.addEventListener("gesturestart", function(e) {
   e.preventDefault();
 }, { passive: false });
 
-// プルリフレッシュ防止
+// ===== プルリフレッシュ防止 =====
 var container = document.getElementById("container");
 var lastY = 0;
 
@@ -115,40 +264,26 @@ container.addEventListener("touchstart", function(e) {
 container.addEventListener("touchmove", function(e) {
   var y = e.touches[0].clientY;
   var scrollTop = container.scrollTop;
-
-  // 上端で下に引っ張った時のみブロック
   if (scrollTop <= 0 && y > lastY) {
     e.preventDefault();
   }
   lastY = y;
 }, { passive: false });
 
-var v = document.getElementById("video");
-var fileInput = document.getElementById("file");
-
-// ファイル選択
+// ===== 動画ファイル選択 =====
 fileInput.onchange = function(e) {
   var files = e.target.files;
   if (!files || files.length === 0) return;
   var url = URL.createObjectURL(files[0]);
   v.src = url;
+
+  // ファイル名からvideo_idを抽出（拡張子を除く）
+  var filename = files[0].name;
+  currentVideoId = filename.replace(/\.[^.]+$/, "");
+  document.getElementById("editVideoId").value = currentVideoId;
 };
 
-// ボタン
-document.getElementById("btnPlay").onclick = function() {
-  v.play().then(function() {
-    v.muted = false;
-  }).catch(function(e) {});
-};
-
-document.getElementById("btnPause").onclick = function() {
-  v.pause();
-};
-
-// シークバー関連
-var seekBar = document.getElementById("seekBar");
-var timeDisplay = document.getElementById("timeDisplay");
-
+// ===== 時間フォーマット =====
 function formatTime(sec) {
   if (isNaN(sec) || !isFinite(sec)) return "00:00.000";
   var m = Math.floor(sec / 60);
@@ -156,37 +291,30 @@ function formatTime(sec) {
   return String(m).padStart(2, "0") + ":" + s.toFixed(3).padStart(6, "0");
 }
 
-// コピー用フォーマット（秒のみ、小数第1位まで）
 function formatTimeForCopy(sec) {
   if (isNaN(sec) || !isFinite(sec)) return "0.0";
   return sec.toFixed(1);
 }
 
-// 精密モード
+// ===== 精密モード =====
 var fineMode = false;
 var fineStartTime = 0;
 var fineStartValue = 0;
-var fineSensitivity = 10; // 10倍細かく
+var fineSensitivity = 10;
 
 function updateTimeDisplay() {
   var current = formatTime(v.currentTime);
   var total = formatTime(v.duration);
   timeDisplay.textContent = current + " / " + total;
-
   if (v.duration > 0) {
     seekBar.value = (v.currentTime / v.duration) * 100;
   }
 }
 
-v.ontimeupdate = function() {
-  updateTimeDisplay();
-};
+v.ontimeupdate = updateTimeDisplay;
+v.ondurationchange = updateTimeDisplay;
 
-v.ondurationchange = function() {
-  updateTimeDisplay();
-};
-
-// シークバー操作
+// ===== シークバー操作 =====
 seekBar.addEventListener("touchstart", function() {
   if (fineMode && v.duration > 0) {
     fineStartTime = v.currentTime;
@@ -204,7 +332,6 @@ seekBar.addEventListener("mousedown", function() {
 seekBar.oninput = function() {
   if (v.duration > 0) {
     if (fineMode) {
-      // 精密モード: 動きを1/10に縮小
       var delta = (parseFloat(seekBar.value) - fineStartValue) / fineSensitivity;
       var newPercent = (fineStartTime / v.duration) * 100 + delta;
       newPercent = Math.max(0, Math.min(100, newPercent));
@@ -216,25 +343,25 @@ seekBar.oninput = function() {
   }
 };
 
-// 精密モード切り替え
+// ===== 精密モード切り替え =====
 document.getElementById("fineModeBtn").onclick = function() {
   fineMode = !fineMode;
   var btn = document.getElementById("fineModeBtn");
   var info = document.getElementById("fineModeInfo");
   if (fineMode) {
     btn.classList.add("active");
-    btn.textContent = "🎯 精密モード ON";
+    btn.textContent = "精密モード ON";
     info.classList.add("active");
     info.textContent = "精密モード ON: シークバーの動きが10倍細かくなります";
   } else {
     btn.classList.remove("active");
-    btn.textContent = "🎯 精密モード";
+    btn.textContent = "精密モード";
     info.classList.remove("active");
     info.textContent = "精密モード: シークバーの動きが10倍細かくなります";
   }
 };
 
-// 細かいシークボタン
+// ===== 細かいシークボタン =====
 function seekBy(sec) {
   v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + sec));
   updateTimeDisplay();
@@ -247,7 +374,104 @@ document.getElementById("seekFwdFrame").onclick = function() { seekBy(0.1); };
 document.getElementById("seekFwd1").onclick = function() { seekBy(1); };
 document.getElementById("seekFwd10").onclick = function() { seekBy(10); };
 
-// タイムスタンプコピー
+// ===== 再生・停止・早送り・巻き戻し =====
+var speedSteps = [1, 2, 4, 8];
+var currentSpeedIndex = 0;
+var playbackMode = "normal"; // "normal", "fastfwd", "rewind"
+var rewindInterval = null;
+
+function updateSpeedDisplay() {
+  var speed = speedSteps[currentSpeedIndex];
+  if (playbackMode === "rewind") {
+    document.getElementById("speedDisplay").textContent = "◀◀ " + speed + "x";
+  } else if (playbackMode === "fastfwd") {
+    document.getElementById("speedDisplay").textContent = speed + "x ▶▶";
+  } else {
+    document.getElementById("speedDisplay").textContent = speed + "x";
+  }
+}
+
+function stopRewind() {
+  if (rewindInterval) {
+    clearInterval(rewindInterval);
+    rewindInterval = null;
+  }
+}
+
+function resetPlayback() {
+  stopRewind();
+  playbackMode = "normal";
+  currentSpeedIndex = 0;
+  v.playbackRate = 1;
+  updateSpeedDisplay();
+}
+
+document.getElementById("btnPlay").onclick = function() {
+  resetPlayback();
+  v.play();
+};
+
+document.getElementById("btnPause").onclick = function() {
+  resetPlayback();
+  v.pause();
+};
+
+document.getElementById("btnFastFwd").onclick = function() {
+  stopRewind();
+
+  if (playbackMode === "fastfwd") {
+    // 次の速度へ
+    currentSpeedIndex++;
+    if (currentSpeedIndex >= speedSteps.length) {
+      // 最後まで行ったら通常に戻る
+      resetPlayback();
+      v.play();
+      return;
+    }
+  } else {
+    // 早送りモードに切り替え
+    playbackMode = "fastfwd";
+    currentSpeedIndex = 1; // 2xから開始
+  }
+
+  v.playbackRate = speedSteps[currentSpeedIndex];
+  v.play();
+  updateSpeedDisplay();
+};
+
+document.getElementById("btnRewind").onclick = function() {
+  if (playbackMode === "rewind") {
+    // 次の速度へ
+    currentSpeedIndex++;
+    if (currentSpeedIndex >= speedSteps.length) {
+      // 最後まで行ったら通常に戻る
+      resetPlayback();
+      v.play();
+      return;
+    }
+  } else {
+    // 巻き戻しモードに切り替え
+    stopRewind();
+    playbackMode = "rewind";
+    currentSpeedIndex = 1; // 2xから開始
+    v.pause();
+  }
+
+  // 巻き戻しはintervalで実装（負の再生速度は非対応のため）
+  stopRewind();
+  var speed = speedSteps[currentSpeedIndex];
+  rewindInterval = setInterval(function() {
+    v.currentTime = Math.max(0, v.currentTime - (speed * 0.1));
+    updateTimeDisplay();
+    if (v.currentTime <= 0) {
+      resetPlayback();
+    }
+  }, 100);
+
+  updateSpeedDisplay();
+};
+
+// ===== タイムスタンプコピー =====
 document.getElementById("timestampBtn").onclick = function() {
   var timestamp = formatTimeForCopy(v.currentTime);
   var btn = document.getElementById("timestampBtn");
@@ -256,7 +480,7 @@ document.getElementById("timestampBtn").onclick = function() {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(timestamp).then(function() {
       btn.classList.add("copied");
-      feedback.textContent = "コピーしました: " + timestamp;
+      feedback.textContent = "コピー: " + timestamp;
       setTimeout(function() {
         btn.classList.remove("copied");
         feedback.textContent = "";
@@ -278,7 +502,7 @@ function fallbackCopy(text) {
   ta.select();
   try {
     document.execCommand("copy");
-    document.getElementById("copyFeedback").textContent = "コピーしました: " + text;
+    document.getElementById("copyFeedback").textContent = "コピー: " + text;
   } catch(e) {
     document.getElementById("copyFeedback").textContent = "コピー失敗";
   }
@@ -287,6 +511,370 @@ function fallbackCopy(text) {
     document.getElementById("copyFeedback").textContent = "";
   }, 2000);
 }
+
+// ===== CSV読み込み =====
+document.getElementById("loadCsvBtn").onclick = function() {
+  fetch("/jichi2507_rule.csv")
+    .then(function(res) {
+      if (!res.ok) throw new Error("CSV not found");
+      return res.text();
+    })
+    .then(function(csv) {
+      parseCsv(csv);
+      showStatus("CSV読み込み完了 (" + annotations.length + "件)", "success");
+    })
+    .catch(function(err) {
+      showStatus("CSV読み込みエラー: " + err.message, "error");
+    });
+};
+
+function parseCsv(csv) {
+  var lines = csv.trim().split("\n");
+  annotations = [];
+
+  for (var i = 1; i < lines.length; i++) {
+    var line = lines[i];
+    if (!line.trim()) continue;
+
+    // CSVパース（クォート対応）
+    var cols = parseCsvLine(line);
+    if (cols.length >= 5) {
+      annotations.push({
+        id: parseInt(cols[0]) || i,
+        video_id: cols[1],
+        start: parseFloat(cols[2]) || 0,
+        end: parseFloat(cols[3]) || 0,
+        query: cols[4]
+      });
+    }
+  }
+
+  renderTable();
+}
+
+function parseCsvLine(line) {
+  var result = [];
+  var current = "";
+  var inQuotes = false;
+
+  for (var i = 0; i < line.length; i++) {
+    var c = line[i];
+    if (c === '"') {
+      inQuotes = !inQuotes;
+    } else if (c === ',' && !inQuotes) {
+      result.push(current);
+      current = "";
+    } else {
+      current += c;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+// ===== CSVダウンロード =====
+document.getElementById("downloadCsvBtn").onclick = function() {
+  var csv = "id,video_id,start,end,query\n";
+
+  for (var i = 0; i < annotations.length; i++) {
+    var a = annotations[i];
+    var query = a.query.replace(/"/g, '""');
+    csv += a.id + "," + a.video_id + "," + a.start + "," + a.end + ',"' + query + '"\n';
+  }
+
+  var blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  var url = URL.createObjectURL(blob);
+  var link = document.createElement("a");
+  link.href = url;
+  link.download = "jichi2507_rule.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+
+  showStatus("CSVをダウンロードしました", "success");
+};
+
+// ===== テーブル描画 =====
+function renderTable() {
+  var tbody = document.getElementById("annotationBody");
+  tbody.innerHTML = "";
+
+  for (var i = 0; i < annotations.length; i++) {
+    var a = annotations[i];
+    var tr = document.createElement("tr");
+    tr.dataset.id = a.id;
+
+    if (editingId === a.id) {
+      tr.classList.add("editing");
+    }
+
+    tr.innerHTML =
+      "<td>" + a.id + "</td>" +
+      "<td>" + escapeHtml(a.video_id) + "</td>" +
+      "<td>" + a.start + "</td>" +
+      "<td>" + a.end + "</td>" +
+      '<td class="query-cell" title="' + escapeHtml(a.query) + '">' + escapeHtml(a.query) + "</td>" +
+      "<td>" +
+        '<button class="btn-primary btn-small edit-btn" data-id="' + a.id + '">編集</button> ' +
+        '<button class="btn-danger btn-small delete-btn" data-id="' + a.id + '">削除</button>' +
+      "</td>";
+
+    tbody.appendChild(tr);
+  }
+
+  document.getElementById("annotationCount").textContent = annotations.length;
+
+  // イベント設定
+  var editBtns = document.querySelectorAll(".edit-btn");
+  for (var j = 0; j < editBtns.length; j++) {
+    editBtns[j].onclick = function() {
+      editAnnotation(parseInt(this.dataset.id));
+    };
+  }
+
+  var deleteBtns = document.querySelectorAll(".delete-btn");
+  for (var k = 0; k < deleteBtns.length; k++) {
+    deleteBtns[k].onclick = function() {
+      deleteAnnotation(parseInt(this.dataset.id));
+    };
+  }
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// ===== アノテーション編集 =====
+function editAnnotation(id) {
+  var a = annotations.find(function(x) { return x.id === id; });
+  if (!a) return;
+
+  editingId = id;
+  document.getElementById("editId").value = id;
+  document.getElementById("editVideoId").value = a.video_id;
+  document.getElementById("editStart").value = a.start;
+  document.getElementById("editEnd").value = a.end;
+  document.getElementById("editQuery").value = a.query;
+
+  document.getElementById("formTitle").textContent = "編集中: ID " + id;
+  document.getElementById("saveBtn").textContent = "更新";
+
+  renderTable();
+}
+
+// ===== アノテーション削除 =====
+function deleteAnnotation(id) {
+  if (!confirm("ID " + id + " を削除しますか？")) return;
+
+  annotations = annotations.filter(function(x) { return x.id !== id; });
+
+  if (editingId === id) {
+    clearForm();
+  }
+
+  renderTable();
+  showStatus("ID " + id + " を削除しました", "success");
+}
+
+// ===== フォームクリア =====
+function clearForm() {
+  editingId = null;
+  document.getElementById("editId").value = "";
+  document.getElementById("editVideoId").value = currentVideoId;
+  document.getElementById("editStart").value = "";
+  document.getElementById("editEnd").value = "";
+  document.getElementById("editQuery").value = "";
+
+  document.getElementById("formTitle").textContent = "新規アノテーション";
+  document.getElementById("saveBtn").textContent = "追加";
+
+  renderTable();
+}
+
+document.getElementById("clearFormBtn").onclick = clearForm;
+
+// ===== 保存 =====
+document.getElementById("saveBtn").onclick = function() {
+  var videoId = document.getElementById("editVideoId").value.trim();
+  var start = parseFloat(document.getElementById("editStart").value) || 0;
+  var end = parseFloat(document.getElementById("editEnd").value) || 0;
+  var query = document.getElementById("editQuery").value.trim();
+
+  if (!videoId) {
+    showStatus("動画を選択してください", "error");
+    return;
+  }
+
+  if (editingId !== null) {
+    // 更新
+    var a = annotations.find(function(x) { return x.id === editingId; });
+    if (a) {
+      a.video_id = videoId;
+      a.start = start;
+      a.end = end;
+      a.query = query;
+      showStatus("ID " + editingId + " を更新しました", "success");
+    }
+  } else {
+    // 新規追加
+    var maxId = 0;
+    for (var i = 0; i < annotations.length; i++) {
+      if (annotations[i].id > maxId) maxId = annotations[i].id;
+    }
+
+    annotations.push({
+      id: maxId + 1,
+      video_id: videoId,
+      start: start,
+      end: end,
+      query: query
+    });
+    showStatus("ID " + (maxId + 1) + " を追加しました", "success");
+  }
+
+  clearForm();
+};
+
+// ===== 現在時刻セット =====
+document.getElementById("setStartBtn").onclick = function() {
+  document.getElementById("editStart").value = formatTimeForCopy(v.currentTime);
+};
+
+document.getElementById("setEndBtn").onclick = function() {
+  document.getElementById("editEnd").value = formatTimeForCopy(v.currentTime);
+};
+
+// ===== オートサジェスト =====
+var queryInput = document.getElementById("editQuery");
+var suggestionsBox = document.getElementById("suggestions");
+var selectedIndex = -1;
+
+function getUniqueQueries() {
+  var seen = {};
+  var unique = [];
+  for (var i = 0; i < annotations.length; i++) {
+    var q = annotations[i].query;
+    if (q && !seen[q]) {
+      seen[q] = true;
+      unique.push(q);
+    }
+  }
+  return unique.sort();
+}
+
+function showSuggestions(input) {
+  var queries = getUniqueQueries();
+  var inputLower = input.toLowerCase();
+  var matches = [];
+
+  if (input.length > 0) {
+    for (var i = 0; i < queries.length; i++) {
+      if (queries[i].toLowerCase().indexOf(inputLower) !== -1) {
+        matches.push(queries[i]);
+      }
+    }
+  }
+
+  suggestionsBox.innerHTML = "";
+  selectedIndex = -1;
+
+  if (matches.length === 0) {
+    suggestionsBox.classList.remove("show");
+    return;
+  }
+
+  for (var j = 0; j < matches.length && j < 10; j++) {
+    var div = document.createElement("div");
+    div.className = "suggestion-item";
+    div.textContent = matches[j];
+    div.dataset.query = matches[j];
+    div.onclick = function() {
+      queryInput.value = this.dataset.query;
+      suggestionsBox.classList.remove("show");
+    };
+    suggestionsBox.appendChild(div);
+  }
+
+  suggestionsBox.classList.add("show");
+}
+
+queryInput.addEventListener("input", function() {
+  showSuggestions(this.value);
+});
+
+queryInput.addEventListener("focus", function() {
+  if (this.value.length > 0) {
+    showSuggestions(this.value);
+  }
+});
+
+queryInput.addEventListener("keydown", function(e) {
+  var items = suggestionsBox.querySelectorAll(".suggestion-item");
+  if (items.length === 0) return;
+
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+    updateSelection(items);
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    selectedIndex = Math.max(selectedIndex - 1, -1);
+    updateSelection(items);
+  } else if (e.key === "Enter" && selectedIndex >= 0) {
+    e.preventDefault();
+    queryInput.value = items[selectedIndex].dataset.query;
+    suggestionsBox.classList.remove("show");
+  } else if (e.key === "Escape") {
+    suggestionsBox.classList.remove("show");
+  }
+});
+
+function updateSelection(items) {
+  for (var i = 0; i < items.length; i++) {
+    items[i].classList.remove("selected");
+  }
+  if (selectedIndex >= 0 && selectedIndex < items.length) {
+    items[selectedIndex].classList.add("selected");
+    items[selectedIndex].scrollIntoView({ block: "nearest" });
+  }
+}
+
+document.addEventListener("click", function(e) {
+  if (!suggestionsBox.contains(e.target) && e.target !== queryInput) {
+    suggestionsBox.classList.remove("show");
+  }
+});
+
+// ===== ステータス表示 =====
+function showStatus(msg, type) {
+  var el = document.getElementById("status");
+  el.textContent = msg;
+  el.className = type || "";
+
+  setTimeout(function() {
+    el.textContent = "";
+    el.className = "";
+  }, 3000);
+}
+
+// ===== 初期化: CSV自動読み込み =====
+window.onload = function() {
+  fetch("/jichi2507_rule.csv")
+    .then(function(res) {
+      if (!res.ok) throw new Error("CSV not found");
+      return res.text();
+    })
+    .then(function(csv) {
+      parseCsv(csv);
+      showStatus("CSV自動読み込み完了 (" + annotations.length + "件)", "success");
+    })
+    .catch(function(err) {
+      showStatus("CSVファイルが見つかりません。手動で読み込んでください。", "error");
+    });
+};
 </script>
 
 </div>
