@@ -180,7 +180,9 @@ button, input { touch-action: manipulation; }
   <h4>CSVファイル</h4>
   <p>
     <button id="loadCsvBtn" class="btn-primary">CSVを読み込み</button>
+    <button id="openLocalCsvBtn" class="btn-primary">ローカルCSVを開く</button>
     <button id="downloadCsvBtn" class="btn-primary">CSVをダウンロード</button>
+    <button id="saveCsvBtn" class="btn-primary" disabled>上書き保存</button>
   </p>
   <div id="status"></div>
 </div>
@@ -246,6 +248,7 @@ button, input { touch-action: manipulation; }
 var annotations = [];
 var editingId = null;
 var currentVideoId = "";
+var csvFileHandle = null; // File System Access API用
 
 // ===== DOM要素 =====
 var v = document.getElementById("video");
@@ -570,7 +573,7 @@ function fallbackCopy(text) {
 
 // ===== CSV読み込み =====
 document.getElementById("loadCsvBtn").onclick = function() {
-  fetch("jichi2507_rule.csv")
+  fetch("jichi2507_rule.csv?t=" + Date.now())
     .then(function(res) {
       if (!res.ok) throw new Error("CSV not found");
       return res.text();
@@ -647,6 +650,60 @@ document.getElementById("downloadCsvBtn").onclick = function() {
   URL.revokeObjectURL(url);
 
   showStatus("CSVをダウンロードしました", "success");
+};
+
+// ===== File System Access API: ローカルCSVを開く =====
+document.getElementById("openLocalCsvBtn").onclick = async function() {
+  if (!window.showOpenFilePicker) {
+    showStatus("このブラウザはFile System Access APIに対応していません（Chrome/Edgeを使用してください）", "error");
+    return;
+  }
+
+  try {
+    var [handle] = await window.showOpenFilePicker({
+      types: [{
+        description: "CSV Files",
+        accept: { "text/csv": [".csv"] }
+      }]
+    });
+    csvFileHandle = handle;
+
+    var file = await handle.getFile();
+    var csv = await file.text();
+    parseCsv(csv);
+
+    document.getElementById("saveCsvBtn").disabled = false;
+    showStatus("ローカルCSV読み込み完了 (" + annotations.length + "件) - 上書き保存が有効になりました", "success");
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      showStatus("ファイルを開けませんでした: " + err.message, "error");
+    }
+  }
+};
+
+// ===== File System Access API: 上書き保存 =====
+document.getElementById("saveCsvBtn").onclick = async function() {
+  if (!csvFileHandle) {
+    showStatus("先にローカルCSVを開いてください", "error");
+    return;
+  }
+
+  try {
+    var csv = "id,video_id,start,end,query\n";
+    for (var i = 0; i < annotations.length; i++) {
+      var a = annotations[i];
+      var query = a.query.replace(/"/g, '""');
+      csv += a.id + "," + a.video_id + "," + a.start + "," + a.end + ',"' + query + '"\n';
+    }
+
+    var writable = await csvFileHandle.createWritable();
+    await writable.write(csv);
+    await writable.close();
+
+    showStatus("上書き保存しました", "success");
+  } catch (err) {
+    showStatus("保存に失敗しました: " + err.message, "error");
+  }
 };
 
 // ===== テーブル描画 =====
@@ -918,7 +975,7 @@ function showStatus(msg, type) {
 
 // ===== 初期化: CSV自動読み込み =====
 window.onload = function() {
-  fetch("jichi2507_rule.csv")
+  fetch("jichi2507_rule.csv?t=" + Date.now())
     .then(function(res) {
       if (!res.ok) throw new Error("CSV not found");
       return res.text();
