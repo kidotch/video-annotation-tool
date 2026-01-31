@@ -944,9 +944,7 @@ input[type="range"] {
   <input type="file" id="file" accept="video/*" style="display:none;">
   <span>CSV:</span>
   <button id="loadCsvBtn" class="btn-secondary btn-small">読み込み</button>
-  <button id="openLocalCsvBtn" class="btn-secondary btn-small">ローカルCSVを開く</button>
-  <button id="downloadCsvBtn" class="btn-secondary btn-small">ダウンロード</button>
-  <button id="saveCsvBtn" class="btn-secondary btn-small" disabled>上書き保存 <span class="key-hint">[Ctrl+S]</span></button>
+  <button id="downloadCsvBtn" class="btn-secondary btn-small">保存</button>
   <button id="restoreFromBackupBtn" class="btn-secondary btn-small">バックアップ復元</button>
   <span id="autoSaveStatus"></span>
   <span id="status"></span>
@@ -1092,7 +1090,6 @@ var editingId = null;
 var selectedRowIndex = -1;
 var selectedAnnotationId = null;
 var currentVideoId = "";
-var csvFileHandle = null; // File System Access API用
 var directoryHandle = null; // 動画フォルダ用
 var videoFiles = {}; // videoId → FileSystemFileHandle
 
@@ -1151,54 +1148,40 @@ container.addEventListener("touchmove", function(e) {
 var VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"];
 
 async function openVideoFolder() {
-  if (!window.showDirectoryPicker) {
-    // フォールバック: 従来の単一ファイル選択
-    fileInput.click();
-    return;
-  }
   try {
-    directoryHandle = await window.showDirectoryPicker();
+    var resp = await fetch("/video-list");
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    var files = await resp.json();
+    if (files.error) throw new Error(files.error);
     videoFiles = {};
-    for await (var entry of directoryHandle.values()) {
-      if (entry.kind !== "file") continue;
-      var name = entry.name;
-      var ext = name.substring(name.lastIndexOf(".")).toLowerCase();
-      if (VIDEO_EXTENSIONS.indexOf(ext) === -1) continue;
+    for (var i = 0; i < files.length; i++) {
+      var name = files[i];
       var videoId = name.replace(/\.[^.]+$/, "");
-      videoFiles[videoId] = entry;
+      videoFiles[videoId] = name; // ファイル名を保持
     }
     renderVideoList();
     var keys = Object.keys(videoFiles).sort();
     if (keys.length > 0 && !currentVideoId) {
       await switchVideo(keys[0]);
     }
-    // フォルダ選択後、検索欄にフォーカス
     var si = document.getElementById("videoSearchInput");
     if (si) si.focus();
   } catch (err) {
-    if (err.name !== "AbortError") {
-      showStatus("フォルダの読み込みに失敗しました", "error");
-    }
+    showStatus("動画一覧の取得に失敗しました: " + err.message, "error");
   }
 }
 
 async function switchVideo(videoId) {
-  var handle = videoFiles[videoId];
-  if (!handle) {
+  var fileName = videoFiles[videoId];
+  if (!fileName) {
     showStatus("動画ファイルが見つかりません: " + videoId, "error");
     return;
   }
-  try {
-    var file = await handle.getFile();
-    var url = URL.createObjectURL(file);
-    v.src = url;
-    currentVideoId = videoId;
-    document.getElementById("editVideoId").value = currentVideoId;
-    document.getElementById("currentVideoName").textContent = currentVideoId;
-    renderVideoList();
-  } catch (err) {
-    showStatus("動画の読み込みに失敗しました: " + videoId, "error");
-  }
+  v.src = "/videos/" + encodeURIComponent(fileName);
+  currentVideoId = videoId;
+  document.getElementById("editVideoId").value = currentVideoId;
+  document.getElementById("currentVideoName").textContent = currentVideoId;
+  renderVideoList();
 }
 
 // ===== 動画検索・選択UI =====
@@ -1737,37 +1720,14 @@ document.getElementById("downloadCsvBtn").onclick = async function() {
     csv += a.id + "," + a.video_id + "," + a.start.toFixed(1) + "," + a.end.toFixed(1) + ',"' + query + '"\n';
   }
 
-  // File System Access API対応ブラウザ（PC Chrome/Edge）では保存先を選択可能
-  if (window.showSaveFilePicker) {
-    try {
-      var handle = await window.showSaveFilePicker({
-        suggestedName: "jichi2507_rule.csv",
-        types: [{
-          description: "CSV Files",
-          accept: { "text/csv": [".csv"] }
-        }]
-      });
-      var writable = await handle.createWritable();
-      await writable.write(csv);
-      await writable.close();
-      showStatus("CSVを保存しました（上書き可能）", "success");
-      return;
-    } catch (err) {
-      if (err.name === "AbortError") return; // ユーザーがキャンセル
-      // フォールバック
-    }
+  // サーバーに直接保存（ダイアログなし）
+  try {
+    var resp = await fetch("/save-csv", { method: "POST", body: csv });
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    showStatus("CSVを上書き保存しました (jichi2507_rule.csv)", "success");
+  } catch (err) {
+    showStatus("CSV保存エラー: " + err.message, "error");
   }
-
-  // フォールバック: 通常のダウンロード（スマホ等）
-  var blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  var url = URL.createObjectURL(blob);
-  var link = document.createElement("a");
-  link.href = url;
-  link.download = "jichi2507_rule.csv";
-  link.click();
-  URL.revokeObjectURL(url);
-
-  showStatus("CSVをダウンロードしました", "success");
 };
 
 // ===== バックアップから復元 =====
@@ -1784,52 +1744,8 @@ document.getElementById("restoreFromBackupBtn").onclick = function() {
   }
 };
 
-// ===== File System Access API: ローカルCSVを開く =====
-document.getElementById("openLocalCsvBtn").onclick = async function() {
-  if (!window.showOpenFilePicker) {
-    showStatus("このブラウザはFile System Access APIに対応していません（Chrome/Edgeを使用してください）", "error");
-    return;
-  }
-
-  try {
-    var [handle] = await window.showOpenFilePicker({
-      types: [{
-        description: "CSV Files",
-        accept: { "text/csv": [".csv"] }
-      }]
-    });
-    csvFileHandle = handle;
-
-    var file = await handle.getFile();
-    var csv = await file.text();
-    parseCsv(csv);
-
-    document.getElementById("saveCsvBtn").disabled = false;
-    showStatus("ローカルCSV読み込み完了 (" + annotations.length + "件)", "success");
-
-    // 自動保存ステータスを表示
-    var autoSaveStatus = document.getElementById("autoSaveStatus");
-    autoSaveStatus.innerHTML = "🔄 <strong>自動保存ON</strong>: 変更は自動的にCSVファイルに保存されます";
-    autoSaveStatus.classList.add("active");
-  } catch (err) {
-    if (err.name !== "AbortError") {
-      showStatus("ファイルを開けませんでした: " + err.message, "error");
-    }
-  }
-};
-
-// ===== File System Access API: 上書き保存 =====
-document.getElementById("saveCsvBtn").onclick = async function() {
-  await saveToCsv(true);
-};
-
-// ===== CSV保存関数（手動・自動共通） =====
+// ===== CSV保存関数（サーバー経由） =====
 async function saveToCsv(showMessage) {
-  if (!csvFileHandle) {
-    if (showMessage) showStatus("先にローカルCSVを開いてください", "error");
-    return false;
-  }
-
   try {
     var csv = "id,video_id,start,end,query\n";
     for (var i = 0; i < annotations.length; i++) {
@@ -1838,9 +1754,8 @@ async function saveToCsv(showMessage) {
       csv += a.id + "," + a.video_id + "," + a.start.toFixed(1) + "," + a.end.toFixed(1) + ',"' + query + '"\n';
     }
 
-    var writable = await csvFileHandle.createWritable();
-    await writable.write(csv);
-    await writable.close();
+    var resp = await fetch("/save-csv", { method: "POST", body: csv });
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
 
     if (showMessage) {
       showStatus("上書き保存しました", "success");
@@ -1936,13 +1851,9 @@ function autoSave() {
   saveToLocalStorage();
   updateBackupStatus();
 
-  // CSVファイルが開かれていれば、ファイルにも保存
-  if (csvFileHandle) {
-    saveToCsv(false);
-    hasUnsavedChanges = false;
-  } else {
-    hasUnsavedChanges = true;
-  }
+  // サーバー経由でCSVに自動保存
+  saveToCsv(false);
+  hasUnsavedChanges = false;
 }
 
 // ===== ページ離脱警告 =====
@@ -2761,6 +2672,9 @@ window.onload = function() {
   }
 
   updateBackupStatus();
+
+  // 動画フォルダを自動読み込み
+  openVideoFolder();
 };
 
 function loadCsvFromServer() {
