@@ -94,3 +94,5 @@ id,video_id,start,end,query
 93,ryuchi_001,337.2,340.0,"The nurse stabilizes the patient’s hand on a support using tape."
 94,ryuchi_001,340.9,348.2,"The nurse palpates the patient’s wrist."
 95,ryuchi_001,386.1,389.0,"The nurse performs hand hygiene."
+96,ryuchi_001,389.1,391.6,"The nurse puts on a face shield with an attached mask."
+97,ryuchi_001,396.0,418.0,"The nurse puts on gloves."
