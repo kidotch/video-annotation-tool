@@ -141,3 +141,6 @@ id,video_id,start,end,query
 140,ryuchi_003,417.1,465.4,"The nurse applies pressure to the puncture site."
 141,ryuchi_003,466.1,478.3,"The nurse applies adhesive tape to the puncture site."
 142,ryuchi_003,540.3,543.6,"The nurse removes and discards the gloves."
+143,ryuchi_004,152.4,157.9,"The nurse performs hand hygiene."
+144,ryuchi_004,158.0,192.8,"The nurse palpates the patient’s wrist."
+145,ryuchi_004,200.0,206.9,"The nurse performs hand hygiene."
