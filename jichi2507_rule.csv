@@ -96,3 +96,5 @@ id,video_id,start,end,query
 95,ryuchi_001,386.1,389.0,"The nurse performs hand hygiene."
 96,ryuchi_001,389.1,391.6,"The nurse puts on a face shield with an attached mask."
 97,ryuchi_001,396.0,418.0,"The nurse puts on gloves."
+98,ryuchi_001,418.6,446.4,"The nurse puts on a gown."
+99,ryuchi_001,460.7,487.8,"The nurse disinfects the skin at the puncture site with alcohol."

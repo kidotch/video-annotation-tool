@@ -531,6 +531,18 @@ input[type="range"] {
     margin: 0;
   }
 
+  .top-left > .section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .top-left > .section video {
+    flex: 1;
+    min-height: 0;
+    object-fit: contain;
+  }
+
   video {
     max-height: none;
     width: 100%;
@@ -1016,11 +1028,10 @@ input[type="range"] {
     </div>
     <div class="shortcut-section">
       <h4>アノテーション一覧</h4>
-      <div class="shortcut-item"><span>行選択</span><span class="shortcut-key">Alt + ↑ / ↓</span></div>
-      <div class="shortcut-item"><span>先頭/末尾へ</span><span class="shortcut-key">Alt + Home / End</span></div>
-      <div class="shortcut-item"><span>編集</span><span class="shortcut-key">Alt + Enter</span></div>
-      <div class="shortcut-item"><span>Start時間にジャンプ</span><span class="shortcut-key">G</span></div>
-      <div class="shortcut-item"><span>End時間にジャンプ</span><span class="shortcut-key">Shift+G</span></div>
+      <div class="shortcut-item"><span>行選択</span><span class="shortcut-key">↑ / ↓</span></div>
+      <div class="shortcut-item"><span>先頭/末尾へ</span><span class="shortcut-key">Home / End</span></div>
+      <div class="shortcut-item"><span>時間にジャンプ</span><span class="shortcut-key">G</span></div>
+      <div class="shortcut-item"><span>編集</span><span class="shortcut-key">Shift+G</span></div>
       <div class="shortcut-item"><span>削除</span><span class="shortcut-key">Delete</span></div>
       <div class="shortcut-item"><span>一覧スクロール</span><span class="shortcut-key">PageUp / PageDown</span></div>
     </div>
@@ -2853,23 +2864,13 @@ document.addEventListener("keydown", function(e) {
       e.preventDefault();
       document.getElementById("muteBtn").click();
       break;
-    case "ArrowUp": // ↑: 音量+10%
-      if (e.altKey) {
-        e.preventDefault();
-        setTableSelectionByIndex(selectedRowIndex - 1);
-      } else {
-        e.preventDefault();
-        adjustVolume(10);
-      }
+    case "ArrowUp": // ↑: 一覧の前の行を選択
+      e.preventDefault();
+      setTableSelectionByIndex(selectedRowIndex - 1);
       break;
-    case "ArrowDown": // ↓: 音量-10%
-      if (e.altKey) {
-        e.preventDefault();
-        setTableSelectionByIndex(selectedRowIndex + 1);
-      } else {
-        e.preventDefault();
-        adjustVolume(-10);
-      }
+    case "ArrowDown": // ↓: 一覧の次の行を選択
+      e.preventDefault();
+      setTableSelectionByIndex(selectedRowIndex + 1);
       break;
     case "BracketLeft": // [: 音量-10%
       e.preventDefault();
@@ -2944,15 +2945,8 @@ document.addEventListener("keydown", function(e) {
       }
       break;
     case "Enter": // Enter: アノテーション追加/更新
-      if (e.altKey) {
-        if (selectedAnnotationId !== null) {
-          e.preventDefault();
-          editAnnotation(selectedAnnotationId);
-        }
-      } else {
-        e.preventDefault();
-        document.getElementById("saveBtn").click();
-      }
+      e.preventDefault();
+      document.getElementById("saveBtn").click();
       break;
     case "KeyI": // I: インサートモード（クエリ入力）
       e.preventDefault();
@@ -3002,22 +2996,27 @@ document.addEventListener("keydown", function(e) {
         scrollTableBy(tableDown.clientHeight * 0.9);
       }
       break;
-    case "Home": // Alt+Home: 一覧先頭
-      if (e.altKey) {
-        e.preventDefault();
-        setTableSelectionByIndex(0);
-      }
+    case "Home": // Home: 一覧先頭
+      e.preventDefault();
+      setTableSelectionByIndex(0);
       break;
-    case "End": // Alt+End: 一覧末尾
-      if (e.altKey) {
-        e.preventDefault();
-        setTableSelectionByIndex(getTableRows().length - 1);
-      }
+    case "End": // End: 一覧末尾
+      e.preventDefault();
+      setTableSelectionByIndex(getTableRows().length - 1);
       break;
-    case "KeyG": // G: 選択中アノテーションの時間にジャンプ
-      if (selectedAnnotationId !== null) {
-        e.preventDefault();
-        jumpToAnnotationTime(selectedAnnotationId, e.shiftKey);
+    case "KeyG":
+      if (e.shiftKey) {
+        // Shift+G: 選択中アノテーションを編集
+        if (selectedAnnotationId !== null) {
+          e.preventDefault();
+          editAnnotation(selectedAnnotationId);
+        }
+      } else {
+        // G: 選択中アノテーションの時間にジャンプ
+        if (selectedAnnotationId !== null) {
+          e.preventDefault();
+          jumpToAnnotationTime(selectedAnnotationId);
+        }
       }
       break;
     case "Delete": // Delete: アノテーション削除
