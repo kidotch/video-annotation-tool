@@ -207,7 +207,7 @@ input[type="range"] {
   color: var(--text-color);
   transition: background 0.3s, border-color 0.3s, color 0.3s;
 }
-#editForm textarea { resize: vertical; min-height: 60px; }
+#editForm textarea { resize: vertical; min-height: 2.4em; height: 2.8em; }
 
 /* オートサジェスト */
 .query-input-container { position: relative; }
@@ -234,8 +234,7 @@ input[type="range"] {
   50% { opacity: 0.7; }
 }
 #suggestions {
-  position: absolute;
-  top: 100%;
+  position: relative;
   left: 0;
   right: 0;
   background: var(--input-bg);
@@ -255,7 +254,7 @@ input[type="range"] {
   font-size: 14px;
   color: var(--text-color);
 }
-.suggestion-item:hover, .suggestion-item.selected {
+.suggestion-item.selected {
   background: var(--suggestion-hover);
 }
 .suggestion-item:last-child { border-bottom: none; }
@@ -549,17 +548,17 @@ input[type="range"] {
   }
 
   .top-right > .section .query-input-container {
-    flex: 1;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
-    min-height: 0;
-    overflow: hidden;
+    position: relative;
   }
 
   .top-right > .section #editQuery {
-    flex: 1;
-    min-height: 30px;
-    resize: none;
+    height: 2.8em;
+    min-height: 2.4em;
+    max-height: 4em;
+    resize: vertical;
   }
 
   .bottom-row {
@@ -1152,8 +1151,6 @@ input[type="range"] {
     <div class="shortcut-section">
       <h4>再生コントロール</h4>
       <div class="shortcut-item"><span>再生/一時停止</span><span class="shortcut-key">Space</span></div>
-      <div class="shortcut-item"><span>巻き戻し</span><span class="shortcut-key">R</span></div>
-      <div class="shortcut-item"><span>早送り</span><span class="shortcut-key">F</span></div>
       <div class="shortcut-item"><span>ミュート切り替え</span><span class="shortcut-key">,</span></div>
       <div class="shortcut-item"><span>音量+10%</span><span class="shortcut-key">↑ / ]</span></div>
       <div class="shortcut-item"><span>音量-10%</span><span class="shortcut-key">↓ / [</span></div>
@@ -1849,7 +1846,7 @@ function parseCsv(csv) {
         video_id: cols[1],
         start: parseFloat(cols[2]) || 0,
         end: parseFloat(cols[3]) || 0,
-        query: cols[4]
+        query: normalizeQuotes((cols[4] || "").trim())
       });
     }
   }
@@ -1998,7 +1995,10 @@ function clearBackup() {
 function restoreFromBackup() {
   var backup = getBackupFromLocalStorage();
   if (backup && backup.annotations) {
-    annotations = backup.annotations;
+    annotations = backup.annotations.map(function(a) {
+      a.query = normalizeQuotes((a.query || "").trim());
+      return a;
+    });
     if (backup.videoId) {
       currentVideoId = backup.videoId;
       document.getElementById("editVideoId").value = currentVideoId;
@@ -2663,7 +2663,7 @@ document.getElementById("saveBtn").onclick = function() {
   var videoId = document.getElementById("editVideoId").value.trim();
   var startVal = document.getElementById("editStart").value.trim();
   var endVal = document.getElementById("editEnd").value.trim();
-  var query = document.getElementById("editQuery").value.trim();
+  var query = normalizeQuotes(document.getElementById("editQuery").value.trim());
 
   if (!videoId) {
     showStatus("動画を選択してください", "error");
@@ -2721,6 +2721,10 @@ document.getElementById("saveBtn").onclick = function() {
   if (tc) tc.scrollTop = tc.scrollHeight;
 };
 
+function normalizeQuotes(s) {
+  return s.replace(/[\u2018\u2019\u201A\u201B]/g, "'").replace(/[\u201C\u201D\u201E\u201F]/g, '"');
+}
+
 // ===== 全フィールド入力済みなら自動追加 =====
 function tryAutoAdd() {
   if (editingId !== null) return; // 編集中は自動追加しない
@@ -2749,7 +2753,7 @@ function getUniqueQueries() {
   var seen = {};
   var unique = [];
   for (var i = 0; i < annotations.length; i++) {
-    var q = annotations[i].query;
+    var q = (annotations[i].query || "").trim();
     if (q && !seen[q]) {
       seen[q] = true;
       unique.push(q);
@@ -2760,12 +2764,21 @@ function getUniqueQueries() {
 
 function showSuggestions(input) {
   var queries = getUniqueQueries();
-  var inputLower = input.toLowerCase();
+  var inputTrimmed = input.trim();
   var matches = [];
 
-  if (input.length > 0) {
+  if (inputTrimmed.length > 0) {
+    var words = inputTrimmed.toLowerCase().split(/\s+/);
     for (var i = 0; i < queries.length; i++) {
-      if (queries[i].toLowerCase().indexOf(inputLower) !== -1) {
+      var qLower = queries[i].toLowerCase();
+      var allMatch = true;
+      for (var w = 0; w < words.length; w++) {
+        if (words[w] && qLower.indexOf(words[w]) === -1) {
+          allMatch = false;
+          break;
+        }
+      }
+      if (allMatch) {
         matches.push(queries[i]);
       }
     }
@@ -2807,21 +2820,22 @@ queryInput.addEventListener("focus", function() {
 
 queryInput.addEventListener("keydown", function(e) {
   var items = suggestionsBox.querySelectorAll(".suggestion-item");
-  if (items.length === 0) return;
 
-  if (e.key === "ArrowDown") {
+  if (e.key === "ArrowDown" && items.length > 0) {
     e.preventDefault();
     selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
     updateSelection(items);
-  } else if (e.key === "ArrowUp") {
+  } else if (e.key === "ArrowUp" && items.length > 0) {
     e.preventDefault();
     selectedIndex = Math.max(selectedIndex - 1, -1);
     updateSelection(items);
-  } else if (e.key === "Enter" && selectedIndex >= 0) {
+  } else if (e.key === "Enter") {
     e.preventDefault();
-    queryInput.value = items[selectedIndex].dataset.query;
+    if (selectedIndex >= 0 && items.length > 0) {
+      queryInput.value = items[selectedIndex].dataset.query;
+    }
     suggestionsBox.classList.remove("show");
-    tryAutoAdd();
+    exitInsertMode();
   } else if (e.key === "Escape") {
     suggestionsBox.classList.remove("show");
   }
@@ -3072,13 +3086,11 @@ document.addEventListener("keydown", function(e) {
       e.preventDefault();
       document.getElementById("btnPlayPause").click();
       break;
-    case "KeyR": // R: 巻き戻し
-      e.preventDefault();
-      document.getElementById("btnRewind").click();
-      break;
-    case "KeyF": // F: 早送り
-      e.preventDefault();
-      document.getElementById("btnFastFwd").click();
+    case "KeyF": // F: 選択中アノテーションを編集
+      if (selectedAnnotationId !== null) {
+        e.preventDefault();
+        editAnnotation(selectedAnnotationId);
+      }
       break;
     case "Comma": // ,: ミュート
       e.preventDefault();
@@ -3242,13 +3254,6 @@ document.addEventListener("keydown", function(e) {
       if (selectedAnnotationId !== null) {
         e.preventDefault();
         jumpToAnnotationTime(selectedAnnotationId);
-      }
-      break;
-    case "KeyF":
-      // F: 選択中アノテーションを編集
-      if (selectedAnnotationId !== null) {
-        e.preventDefault();
-        editAnnotation(selectedAnnotationId);
       }
       break;
     case "Delete": // Delete: アノテーション削除
